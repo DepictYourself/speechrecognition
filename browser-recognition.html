@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Browser speech recognition</title>
+    <link rel="stylesheet" href="./style.css" />
+    <link href="./quill.snow.css" rel="stylesheet">
+    <script src="./quill.js"></script>
+    <script src="./jquery-3.5.1.min.js"></script>
+
+  </head>
+  <body>
+    <main>
+      <button id="button">Start listening</button>
+      <div id="result"></div>
+      <div id="result2"></div>
+      <!-- Create the editor container -->
+      <div id="editor">
+      </div>
+      <p id="message" hidden aria-hidden="true">
+        Your browser doesn't support Speech Recognition. Sorry.
+      </p>
+    </main>
+    <script>
+      window.addEventListener("keydown", (evt) => {
+        const key = evt.key
+
+      })
+      window.addEventListener("DOMContentLoaded", () => {
+        const button = document.getElementById("button");
+        const result = document.getElementById("result");
+        const main = document.getElementsByTagName("main")[0];
+        let listening = false;
+        const SpeechRecognition =
+          window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (typeof SpeechRecognition !== "undefined") {
+          const recognition = new SpeechRecognition();
+          //recognition.lang = 'yue-Hant-HK' // https://stackoverflow.com/questions/14257598/what-are-language-codes-in-chromes-implementation-of-the-html5-speech-recogniti
+          //recognition.lang = 'hu-HU'
+          //recognition.lang = 'es-ES'
+          //recognition.lang = 'ja-JP'
+          //recognition.lang = 'vi-VN'
+          recognition.lang = 'en-US'
+          //recognition.lang = 'cmn-Hans-CN'
+          //recognition.lang = 'ko-KR'
+          recognition.maxAlternatives = 1000;
+
+          const stop = () => {
+            main.classList.remove("speaking");
+            recognition.stop();
+            button.textContent = "Start listening";
+          };
+
+          const start = () => {
+            main.classList.add("speaking");
+            recognition.start();
+            button.textContent = "Stop listening";
+          };
+
+          const onResult = event => {
+            result.innerHTML = "";
+            //console.log(event.results)
+            //window.asr_results = event.results[0]
+            update_asr_and_text(event.results[0], getEditorText())
+            for (const res of event.results) {
+              const text = document.createTextNode(res[0].transcript);
+              const p = document.createElement("p");
+              if (res.isFinal) {
+                p.classList.add("final");
+              }
+              p.appendChild(text);
+              result.appendChild(p);
+            }
+          };
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.addEventListener("result", onResult);
+          button.addEventListener("click", event => {
+            listening ? stop() : start();
+            listening = !listening;
+          });
+        } else {
+          button.remove();
+          const message = document.getElementById("message");
+          message.removeAttribute("hidden");
+          message.setAttribute("aria-hidden", "false");
+        }
+      });
+
+  function getEditorText() {
+    //return document.getElementById('editor').innerText.trim()
+    return quill.getText().trim()
+  }
+
+
+  var quill = new Quill('#editor', {
+    theme: 'snow',
+    modules: {
+      toolbar: false,
+      keyboard: {
+        bindings: {
+          tab: {
+            key: 9,
+            handler: function() {
+              console.log('tab');
+            }
+          }
+        }
+      }
+    },
+  });
+
+  function tokenize(text) {
+    const output = []
+    const current = []
+    for (const c of text) {
+      if (c === ' ') {
+        current.push(c)
+        output.push(current.join(''))
+        current.length = 0
+      } else {
+        current.push(c)
+      }
+    }
+    if (current.length > 0) {
+      output.push(current.join(''))
+      current.length = 0
+    }
+    return output
+  }
+
+function getEditDistance(a, b){
+  if(a.length == 0) return b.length; 
+  if(b.length == 0) return a.length; 
+
+  var matrix = [];
+
+  // increment along the first column of each row
+  var i;
+  for(i = 0; i <= b.length; i++){
+    matrix[i] = [i];
+  }
+
+  // increment each column in the first row
+  var j;
+  for(j = 0; j <= a.length; j++){
+    matrix[0][j] = j;
+  }
+
+  // Fill in the rest of the matrix
+  for(i = 1; i <= b.length; i++){
+    for(j = 1; j <= a.length; j++){
+      if(b.charAt(i-1) == a.charAt(j-1)){
+        matrix[i][j] = matrix[i-1][j-1];
+      } else {
+        matrix[i][j] = Math.min(matrix[i-1][j-1] + 1, // substitution
+                                Math.min(matrix[i][j-1] + 1, // insertion
+                                         matrix[i-1][j] + 1)); // deletion
+      }
+    }
+  }
+
+  return matrix[b.length][a.length];
+};
+
+function getMinimumEditDistanceAndIndex(a, b) {
+  var min_edit_distance = 99999999
+  var min_edit_distance_idx = 0
+  for (var i = 0; i < b.length; ++i) {
+    var bsub = b.substr(0, i)
+    var edit_dist = getEditDistance(a, bsub)
+    if (edit_dist <= min_edit_distance) {
+      min_edit_distance = edit_dist
+      min_edit_distance_idx = i
+    }
+  }
+  return [min_edit_distance, min_edit_distance_idx]
+}
+
+function getBestCandidateInfo(a, b_list) {
+  var min_edit_distance = 9999999
+  var min_edit_distance_idx = 0
+  var best_candidate_idx = 0
+  for (var i = 0; i < b_list.length; ++i) {
+    const b = b_list[i]
+    const [edit_distance, edit_distance_idx] = getMinimumEditDistanceAndIndex(a, b)
+    if (edit_distance < min_edit_distance) {
+      min_edit_distance = edit_distance
+      min_edit_distance_idx = edit_distance_idx
+      best_candidate_idx = i
+    }
+  }
+  if (b_list[best_candidate_idx][min_edit_distance_idx] === ' ') {
+    idx_suggestion_end = b_list[best_candidate_idx].indexOf(' ', min_edit_distance_idx + 1)
+  } else {
+    idx_suggestion_end = b_list[best_candidate_idx].indexOf(' ', min_edit_distance_idx)
+  }
+  if (idx_suggestion_end === -1) {
+    idx_suggestion_end = b_list[best_candidate_idx].length
+  }
+  return {
+    candidate: best_candidate_idx,
+    edit_distance: min_edit_distance,
+    idx_suggestion_start: min_edit_distance_idx,
+    idx_suggestion_end: idx_suggestion_end,
+  }
+}
+
+  function update_asr_and_text(asr_results, text) {
+    if (asr_results == null) {
+      asr_results = window.asr_results
+      if (asr_results == null) {
+        asr_results = []
+      }
+    } else if (asr_results != null) {
+      window.asr_results = asr_results
+    }
+    if (text == null) {
+      text = ''
+    }
+    console.log('update_asr_and_text')
+    console.log(asr_results)
+    console.log(text)
+    const candidate_text_list = []
+    for (const x of asr_results) {
+      candidate_text_list.push(x.transcript)
+    }
+    const candidate_info = getBestCandidateInfo(text, candidate_text_list)
+    const candidate_text = candidate_text_list[candidate_info.candidate]
+    const suggestion_text = candidate_text.substr(candidate_info.idx_suggestion_start, candidate_info.idx_suggestion_end - candidate_info.idx_suggestion_start)
+    window.suggestion_text = suggestion_text
+    console.log(candidate_info)
+    console.log('suggestion is: ' + candidate_text.substr(candidate_info.idx_suggestion_start, candidate_info.idx_suggestion_end - candidate_info.idx_suggestion_start))
+    $('#result2').html('')
+    $('#result2').append($('<span>').text(text))
+    $('#result2').append($('<span style="background-color: yellow">').text(suggestion_text))
+    $('#result2').append($('<span>').text(candidate_text.substr(candidate_info.idx_suggestion_end)))
+  }
+
+  $('#editor')[0].addEventListener('keydown', (evt) => {
+    if (evt.key === 'Tab') {
+      evt.preventDefault()
+      quill.insertText(quill.getText().trim().length, window.suggestion_text)
+      return false
+    }
+  })
+
+  quill.on('text-change', function(delta, oldDelta, source) {
+    if (source == 'api') {
+      console.log("An API call triggered this change.");
+    } else if (source == 'user') {
+      console.log("A user action triggered this change.");
+    }
+    const text = getEditorText()
+    update_asr_and_text(null, text)
+  });
+
+</script>
+  </body>
+</html>
