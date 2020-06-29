@@ -13,6 +13,8 @@
   </head>
   <body>
     <main>
+      Language: <select class="form-control"  id='languageSelect' name='languageSelect'></select>
+      <br><br>
       <button id="button">Start listening</button>
       <div id="result"></div>
       <div id="result2"></div>
@@ -23,12 +25,40 @@
         Your browser doesn't support Speech Recognition. Sorry.
       </p>
     </main>
+    <script src="languagelist.js"></script>
     <script>
       window.addEventListener("keydown", (evt) => {
         const key = evt.key
 
       })
-      window.addEventListener("DOMContentLoaded", () => {
+
+      function languageChanged(evt) {
+        console.log('language changed to')
+        console.log(getCurrentLanguage())
+        addSpeechRecognition()
+      }
+
+      function addLanguageOptions() {
+        const langsel = document.querySelector('#languageSelect')
+        let idx = 0
+        window.lang_to_index = {}
+        const seen = new Set();
+        for (const {name, lang} of window.languagelist) {
+          if (seen.has(name + "+" + lang)) {
+            continue
+          }
+          window.lang_to_index[lang] = idx;
+          seen.add(name + '+' + lang);
+          langsel.options[idx] = new Option(name, lang)
+          idx++;
+        }
+      }
+
+      function getCurrentLanguage() {
+        return document.querySelector('#languageSelect').value
+      }
+
+      function addSpeechRecognition() {
         const button = document.getElementById("button");
         const result = document.getElementById("result");
         const main = document.getElementsByTagName("main")[0];
@@ -37,14 +67,16 @@
           window.SpeechRecognition || window.webkitSpeechRecognition;
         if (typeof SpeechRecognition !== "undefined") {
           const recognition = new SpeechRecognition();
+          window.recognition = recognition
           //recognition.lang = 'yue-Hant-HK' // https://stackoverflow.com/questions/14257598/what-are-language-codes-in-chromes-implementation-of-the-html5-speech-recogniti
           //recognition.lang = 'hu-HU'
           //recognition.lang = 'es-ES'
           //recognition.lang = 'ja-JP'
           //recognition.lang = 'vi-VN'
-          recognition.lang = 'en-US'
+          //recognition.lang = 'en-US'
           //recognition.lang = 'cmn-Hans-CN'
           //recognition.lang = 'ko-KR'
+          recognition.lang = getCurrentLanguage()
           recognition.maxAlternatives = 1000;
 
           const stop = () => {
@@ -87,6 +119,13 @@
           message.removeAttribute("hidden");
           message.setAttribute("aria-hidden", "false");
         }
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        addLanguageOptions()
+        document.querySelector('#languageSelect').onchange = languageChanged;
+        document.querySelector('#languageSelect').selectedIndex = window.lang_to_index['en-US']
+        addSpeechRecognition();
       });
 
   function getEditorText() {
